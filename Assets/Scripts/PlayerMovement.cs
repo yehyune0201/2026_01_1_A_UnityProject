@@ -1,54 +1,231 @@
-using UnityEngine;
+﻿using UnityEngine;
 
-public class PlayerMOvement : MonoBehaviour
+public class PlayerMovement : MonoBehaviour
 {
-    public float moveSpeed = 5.0f;
-    public float jumpForce = 5.0f;
+    [Header("기본 이동 설정")]
+    public float moveSpeed = 5.0f;                                          
+    public float jumpForce = 5.0f;                                          
+    public float turnSpeed = 10.0f;                                       
 
-    public Rigidbody rb;
+    [Header("점프 개선 설정")]
+    public float fallMultiplier = 2.5f;                                     
+    public float lowJumpMultiplier = 2.0f;                                 
 
-    public bool isGrounded = true;
+    [Header("지면 감지 설정")]
+    public float coyoteTime = 0.15f;                                        
+    public float coyoteTimeCounter;                                        
+    public bool realGrouned = true;                                         
 
-    public int coinCount = 0;
+    [Header("글라이더 설정")]
+    public GameObject gliderObject;                                       
+    public float gliderFallSpeed = 1.0f;                                   
+    public float gliderFMoveSpeed = 7.0f;                                
+    public float gliderMaxTime = 5.0f;                               
+    public float gliderTimerLeft;                                   
+    public bool isGliding = false;                                      
+
+    public Rigidbody rb;                                                   
+
+    public bool isGrounded = true;                                         
+
+    public int coinCount = 0;                                              
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        
-    }
+        coyoteTimeCounter = 0;
 
-
-    private void OnTriggerEnter(Collider other)
-    {
-        if(other.CompareTag("Coin"))
+        if (gliderObject != null)                                 
         {
-            coinCount++;
-            Destroy(other.gameObject);
+            gliderObject.SetActive(false);                         
         }
+
+        gliderTimerLeft = gliderMaxTime;                          
     }
 
-
-    void OnCollisionEnter(Collision collsion)
-    {
-        if (collsion.gameObject.tag == "Ground")
-        {
-            isGrounded = true;
-
-        }
-    }
-        // Update is called once per frame
+    // Update is called once per frame
     void Update()
     {
-        float moveHorizontal = Input.GetAxis("Horizontal");
-        float moveVertical = Input.GetAxis("Vertical");
 
-        rb.linearVelocity = new Vector3(moveHorizontal * moveSpeed, rb.linearVelocity.y, moveVertical* moveSpeed);
+        UpdateGrounededState();                   
+
        
-        if(Input.GetButtonDown("Jump") && isGrounded)
+        float moveHorizontal = Input.GetAxis("Horizontal");                    
+        float moveVertical = Input.GetAxis("Vertical");                        
+
+       
+        Vector3 movement = new Vector3(moveHorizontal, 0, moveVertical);              
+
+        if (movement.magnitude > 0.1f)                                              
         {
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-            isGrounded = false;
+            Quaternion targetRotation = Quaternion.LookRotation(movement);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
+            
         }
+
         
+        if (Input.GetKey(KeyCode.G) && !isGrounded && gliderTimerLeft > 0)      
+        {
+            if (!isGliding)                        
+            {
+                EnableGlider();
+            }
+
+            gliderTimerLeft -= Time.deltaTime;   
+
+            if (gliderTimerLeft <= 0)                
+            {
+                DisableGlider();
+            }
+        }
+        else if (isGliding)
+        {
+            DisableGlider();                         
+        }
+
+
+
+        if (isGliding)                               
+        {
+
+            ApplyGliderMovement(moveHorizontal, moveVertical);             
+
+        }
+        else
+        {
+           
+            rb.linearVelocity = new Vector3(moveHorizontal * moveSpeed, rb.linearVelocity.y, moveVertical * moveSpeed);
+
+
+            
+            if (rb.linearVelocity.y < 0)
+            {
+                rb.linearVelocity += Vector3.up * Physics.gravity.y * (fallMultiplier - 1) * Time.deltaTime;        
+            }
+            else if (rb.linearVelocity.y > 0 && !Input.GetButton("Jump"))                          
+            {
+                rb.linearVelocity += Vector3.up * Physics.gravity.y * (lowJumpMultiplier - 1) * Time.deltaTime;
+            }
+
+        }
+
+
+        
+        if (Input.GetButtonDown("Jump") && isGrounded)  
+        {
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);        
+            isGrounded = false;                                          
+            realGrouned = false;
+            coyoteTimeCounter = 0;
+        }
+
+        
+        if (isGrounded)
+        {
+            if (isGliding)
+            {
+                DisableGlider();
+            }
+
+            gliderTimerLeft = gliderMaxTime;          
+        }
+
+    }
+
+    void OnCollisionEnter(Collision collision)                         
+    {
+        if (collision.gameObject.tag == "Ground")                               
+        {
+            realGrouned = true;                                     
+        }
+    }
+
+    void OnCollisionStay(Collision collision)                          
+    {
+        if (collision.gameObject.tag == "Ground")                            
+        {
+            realGrouned = true;                                              
+        }
+    }
+
+    void OnCollisionExit(Collision collision)                     
+    {
+        if (collision.gameObject.tag == "Ground")
+        {
+            realGrouned = false;                                            
+        }
+    }
+
+
+    void OnTriggerEnter(Collider other)                                  
+    {
+        if (other.CompareTag("Coin"))                                    
+        {
+            coinCount++;                                                
+            Destroy(other.gameObject);                                  
+        }
+    }
+
+
+    //지면 상태 업데이트 함수 
+    void UpdateGrounededState()
+    {
+        if (realGrouned)                                                
+        {
+            coyoteTimeCounter = coyoteTime;
+            isGrounded = true;
+        }
+        else
+        {
+            
+            if (coyoteTimeCounter > 0)
+            {
+                coyoteTimeCounter -= Time.deltaTime;                        
+                isGrounded = true;
+            }
+            else
+            {
+                isGrounded = false;
+            }
+        }
+    }
+
+    //글라이더 활성화 함수 
+    void EnableGlider()
+    {
+        isGliding = true;
+
+        //글라이더 오브젝트 표시
+        if (gliderObject != null)
+        {
+            gliderObject.SetActive(true);
+        }
+
+        //즉시 낙하 중력
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, -gliderFallSpeed, rb.linearVelocity.z);
+    }
+
+    //글라이더 오브젝트 숨기기
+    void DisableGlider()
+    {
+        isGliding = false;
+
+        
+        if (gliderObject != null)
+        {
+            gliderObject.SetActive(false);
+        }
+
+        
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
+    }
+
+    //글라이더 이동 적용
+    void ApplyGliderMovement(float horizontal, float vertical)           
+    {
+        
+        Vector3 gliderVelocity = new Vector3(horizontal * gliderFMoveSpeed, -gliderFallSpeed, vertical * gliderFMoveSpeed);
+
+        rb.linearVelocity = gliderVelocity;
     }
 }
